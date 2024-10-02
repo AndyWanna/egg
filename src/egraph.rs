@@ -1,8 +1,6 @@
 use crate::*;
 use std::{
-    borrow::BorrowMut,
-    fmt::{self, Debug, Display},
-    marker::PhantomData,
+    borrow::BorrowMut, fmt::{self, Debug, Display}, marker::PhantomData
 };
 
 #[cfg(feature = "serde-1")]
@@ -228,8 +226,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     /// Performs the union between two egraphs.
     pub fn egraph_union(&mut self, other: &EGraph<L, N>) {
-        let right_unions = other.get_union_equalities();
+        let right_unions: Vec<(Id, Id, Symbol)> = other.get_union_equalities();
         for (left, right, why) in right_unions {
+            // I think this accounts for patterns that exist in both egraphs
             self.union_instantiations(
                 &other.id_to_pattern(left, &Default::default()).0.ast,
                 &other.id_to_pattern(right, &Default::default()).0.ast,
@@ -238,6 +237,27 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             );
         }
         self.rebuild();
+    }
+
+    /// Performs the union between two egraphs.
+    /// 
+    /// ANDY MODIFICATION: Return a map of the old_egraph IDs to the new
+    pub fn egraph_union_with_outmap(&mut self, other: &EGraph<L, N>) -> HashMap<Id, Id> {
+        let right_unions: Vec<(Id, Id, Symbol)> = other.get_union_equalities();
+        let mut egraph_id_mapping:HashMap<Id,Id> = HashMap::default();
+        for (left, right, why) in right_unions {
+            // I think this accounts for patterns that exist in both egraphs
+            let (new_egraph_id, _) = self.union_instantiations(
+                &other.id_to_pattern(left, &Default::default()).0.ast,
+                &other.id_to_pattern(right, &Default::default()).0.ast,
+                &Default::default(),
+                why,
+            );
+            egraph_id_mapping.insert(left, new_egraph_id);
+            egraph_id_mapping.insert(right, new_egraph_id);
+        }
+        self.rebuild();
+        return egraph_id_mapping;
     }
 
     fn from_enodes(enodes: Vec<(L, Id)>, analysis: N) -> Self {
@@ -1264,6 +1284,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn dump(&self) -> impl Debug + '_ {
         EGraphDump(self)
     }
+
+    /// Remove an E-Class from an E-graph (unsafe/untested - Andys Implementation)
+    pub fn remove(&mut self, id1: Id){
+        self.classes.remove(&id1);
+    }
+
 }
 
 impl<L: Language + Display, N: Analysis<L>> EGraph<L, N> {
