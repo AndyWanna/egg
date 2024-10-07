@@ -1,6 +1,6 @@
 use crate::*;
 use std::{
-    borrow::BorrowMut, fmt::{self, Debug, Display}, marker::PhantomData, hash::Hash, vec 
+    borrow::BorrowMut, fmt::{self, Debug, Display}, marker::PhantomData, vec 
 };
 
 #[cfg(feature = "serde-1")]
@@ -1348,7 +1348,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     
     /// Remove an E-Class from an E-graph (unsafe/untested - Andys Implementation)
+    /// WARNING this should only be used when removing nodes that point to this class aswell!
     pub fn remove(&mut self, id1: Id){
+        
         self.classes.remove(&id1);
     }
 
