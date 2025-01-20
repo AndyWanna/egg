@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::Debug;
 
-use crate::util::{hashmap_with_capacity, HashMap};
+use crate::util::HashMap;
 use crate::{Analysis, EClass, EGraph, Id, Language, RecExpr};
 
 /** Extracting a single [`RecExpr`] from an [`EGraph`].
@@ -105,13 +105,6 @@ let cost_func = EGraphCostFn { egraph: &egraph };
 let mut extractor = Extractor::new(&egraph, cost_func);
 let _ = extractor.find_best(id);
 ```
-
-Note that a particular e-class might occur in an expression multiple times.
-This means that pathological, but nevertheless realistic cases
-might overflow `usize` if you implement a cost function like [`AstSize`],
-even if the actual [`RecExpr`] fits compactly in memory.
-You might want to use [`saturating_add`](u64::saturating_add) to
-ensure your cost function is still monotonic in this situation.
 **/
 pub trait CostFunction<L: Language> {
     /// The `Cost` type. It only requires `PartialOrd` so you can use
@@ -134,9 +127,8 @@ pub trait CostFunction<L: Language> {
     /// down the [`RecExpr`].
     ///
     fn cost_rec(&mut self, expr: &RecExpr<L>) -> Self::Cost {
-        let nodes = expr.as_ref();
-        let mut costs = hashmap_with_capacity::<Id, Self::Cost>(nodes.len());
-        for (i, node) in nodes.iter().enumerate() {
+        let mut costs: HashMap<Id, Self::Cost> = HashMap::default();
+        for (i, node) in expr.as_ref().iter().enumerate() {
             let cost = self.cost(node, |i| costs[&i].clone());
             costs.insert(Id::from(i), cost);
         }
@@ -145,7 +137,7 @@ pub trait CostFunction<L: Language> {
     }
 }
 
-/** A simple [`CostFunction`] that counts total AST size.
+/** A simple [`CostFunction`] that counts total ast size.
 
 ```
 # use egg::*;
@@ -162,11 +154,11 @@ impl<L: Language> CostFunction<L> for AstSize {
     where
         C: FnMut(Id) -> Self::Cost,
     {
-        enode.fold(1, |sum, id| sum.saturating_add(costs(id)))
+        enode.fold(1, |sum, id| sum + costs(id))
     }
 }
 
-/** A simple [`CostFunction`] that counts maximum AST depth.
+/** A simple [`CostFunction`] that counts maximum ast depth.
 
 ```
 # use egg::*;
@@ -193,7 +185,7 @@ fn cmp<T: PartialOrd>(a: &Option<T>, b: &Option<T>) -> Ordering {
         (None, None) => Ordering::Equal,
         (None, Some(_)) => Ordering::Greater,
         (Some(_), None) => Ordering::Less,
-        (Some(a), Some(b)) => a.partial_cmp(b).unwrap(),
+        (Some(a), Some(b)) => a.partial_cmp(&b).unwrap(),
     }
 }
 
@@ -246,7 +238,7 @@ where
         if node.all(has_cost) {
             let costs = &self.costs;
             let cost_f = |id| costs[&eg.find(id)].0.clone();
-            Some(self.cost_function.cost(node, cost_f))
+            Some(self.cost_function.cost(&node, cost_f))
         } else {
             None
         }
@@ -291,26 +283,5 @@ where
             .min_by(|a, b| cmp(&a.0, &b.0))
             .unwrap_or_else(|| panic!("Can't extract, eclass is empty: {:#?}", eclass));
         cost.map(|c| (c, node.clone()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-
-    #[test]
-    fn ast_size_overflow() {
-        let rules: &[Rewrite<SymbolLang, ()>] =
-            &[rewrite!("explode"; "(meow ?a)" => "(meow (meow ?a ?a))")];
-
-        let start = "(meow 42)".parse().unwrap();
-        let runner = Runner::default()
-            .with_iter_limit(100)
-            .with_expr(&start)
-            .run(rules);
-
-        let extractor = Extractor::new(&runner.egraph, AstSize);
-        let (_, best_expr) = extractor.find_best(runner.roots[0]);
-        assert_eq!(best_expr, start);
     }
 }

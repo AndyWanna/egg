@@ -21,7 +21,7 @@ The [`EGraph::dot`](EGraph::dot()) method creates `Dot`s.
 
 # Example
 
-```no_run
+```
 use egg::{*, rewrite as rw};
 
 let rules = &[
@@ -38,9 +38,9 @@ println!("My egraph dot file: {}", egraph.dot());
 
 // create a Dot and then compile it assuming `dot` is on the system
 egraph.dot().to_svg("target/foo.svg").unwrap();
-egraph.dot().to_png("target/foo.png").unwrap();
-egraph.dot().to_pdf("target/foo.pdf").unwrap();
-egraph.dot().to_dot("target/foo.dot").unwrap();
+// egraph.dot().to_png("target/foo.png").unwrap();
+// egraph.dot().to_pdf("target/foo.pdf").unwrap();
+// egraph.dot().to_dot("target/foo.dot").unwrap();
 ```
 
 Note that self-edges (from an enode to its containing eclass) will be
@@ -87,19 +87,19 @@ where
     /// Renders the `Dot` to a .png file with the given filename.
     /// Requires a `dot` binary to be on your `$PATH`.
     pub fn to_png(&self, filename: impl AsRef<Path>) -> Result<()> {
-        self.run_dot(["-Tpng".as_ref(), "-o".as_ref(), filename.as_ref()])
+        self.run_dot(&["-Tpng".as_ref(), "-o".as_ref(), filename.as_ref()])
     }
 
     /// Renders the `Dot` to a .svg file with the given filename.
     /// Requires a `dot` binary to be on your `$PATH`.
     pub fn to_svg(&self, filename: impl AsRef<Path>) -> Result<()> {
-        self.run_dot(["-Tsvg".as_ref(), "-o".as_ref(), filename.as_ref()])
+        self.run_dot(&["-Tsvg".as_ref(), "-o".as_ref(), filename.as_ref()])
     }
 
     /// Renders the `Dot` to a .pdf file with the given filename.
     /// Requires a `dot` binary to be on your `$PATH`.
     pub fn to_pdf(&self, filename: impl AsRef<Path>) -> Result<()> {
-        self.run_dot(["-Tpdf".as_ref(), "-o".as_ref(), filename.as_ref()])
+        self.run_dot(&["-Tpdf".as_ref(), "-o".as_ref(), filename.as_ref()])
     }
 
     /// Invokes `dot` with the given arguments, piping this formatted

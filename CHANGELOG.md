@@ -1,76 +1,9 @@
 # Changes
 
 ## [Unreleased] - ReleaseDate
-- Change the API of `make` to have mutable access to the e-graph for some [advanced uses cases](https://github.com/egraphs-good/egg/pull/277).
-- Fix an e-matching performance regression introduced in [this commit](https://github.com/egraphs-good/egg/commit/ae8af8815231e4aba1b78962f8c07ce837ee1c0e#diff-1d06da761111802c793c6e5ca704bfa0d6336d0becf87fddff02d81548a838ab).
-- Use `quanta` instead of `instant` crate to provide timing information. This can provide a huge speedup if you have lots of rules, since it avoids some syscalls.
-
-## [0.9.5] - 2023-06-29
-- Fixed a few edge cases in proof size optimization that caused egg to crash.
-
-## [0.9.4] - 2023-05-23
-- [#253] Improved rebuilding algorithm using a queue.
-- [#259] Fixed another overflow bug in proof size optimization.
-- Various typo fixes (Thanks @nlewycky)
-
-## [0.9.3] - 2023-02-06
-
-### Added
-- [#215](https://github.com/egraphs-good/egg/pull/215) Added a better intersection algorithms on two egraphs based on "Join Algorithms for the Theory of Uninterpreted Functions". The old intersection algorithm was not complete on the terms in both egraphs, but the new one is. Unfortunately, the new algorithm is quadratic.
-
-### Changed
-- [#230](https://github.com/egraphs-good/egg/pull/230) Fixed a performance bug in `get_string_with_let` that caused printing let-bound proofs to be extremely inefficient.
-
-
-## [0.9.2] - 2022-12-15
-
-### Added
-
-- [#210](https://github.com/egraphs-good/egg/pull/210) Fix crashes in proof generation due to proof size calculations overflowing.
-
-## [0.9.1] - 2022-09-22
-
-### Added
-
-- [#186](https://github.com/egraphs-good/egg/pull/186) Added proof minimization (enabled by default), a greedy algorithm to find smaller proofs
-  - with and `without_explanation_length_optimization` for turning this on and off
-  - `copy_without_unions` for copying an egraph but without any equality information
-  - `id_to_expr` for getting an expression corresponding to a particular enode's id
-- [#197](https://github.com/egraphs-good/egg/pull/197) Added `search_with_limit`, so that matching also stops when it hits scheduling limits.
-
-### Changed
-
-- Changed the `pre_union` hook to support explanations
-  - now provides the `Id` of the two specific enodes that are merged,  not canonical ids.
-  - It also provides the reason for the merge in the form of a `Justification`.
-
-## [0.9.0] - 2022-06-12
-
-### Added
-- Added a way to update analysis data and have it propagate through the e-graph
-
-### Changed
-- Improved documentation
-- Updated dependencies
-- `union` is now allowed when explanations are on
-
-## [0.8.1] - 2022-05-04
-
-### Changed
-- Improved documentation for features.
-
-## [0.8.0] - 2022-04-28
-
-### Added
-- ([#128](https://github.com/egraphs-good/egg/pull/128)) Add an ILP-based extractor.
-- ([#168](https://github.com/egraphs-good/egg/pull/168)) Added MultiPatterns.
 
 ### Changed
 - ([#165](https://github.com/egraphs-good/egg/pull/165)) Unions now happen "instantly", restoring the pre-0.7 behavior. 
-- The tested MSRV is now 1.60.0.
-- Several small documentation enhancements.
-- ([#162](https://github.com/egraphs-good/egg/pull/162), [#163](https://github.com/egraphs-good/egg/pull/163))
-  Extracted the `Symbol` logic into the [`symbol_table`](https://crates.io/crates/symbol_table) crate.
 
 ## [0.7.1] - 2021-12-14
 
@@ -242,15 +175,7 @@ But hopefully things will be a little more stable from here on out
 since the API is a lot nicer.
 
 <!-- next-url -->
-[Unreleased]: https://github.com/egraphs-good/egg/compare/v0.9.5...HEAD
-[0.9.5]: https://github.com/egraphs-good/egg/compare/v0.9.4...v0.9.5
-[0.9.4]: https://github.com/egraphs-good/egg/compare/v0.9.3...v0.9.4
-[0.9.3]: https://github.com/egraphs-good/egg/compare/v0.9.2...v0.9.3
-[0.9.2]: https://github.com/egraphs-good/egg/compare/v0.9.1...v0.9.2
-[0.9.1]: https://github.com/egraphs-good/egg/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/egraphs-good/egg/compare/v0.8.1...v0.9.0
-[0.8.1]: https://github.com/egraphs-good/egg/compare/v0.8.0...v0.8.1
-[0.8.0]: https://github.com/egraphs-good/egg/compare/v0.7.1...v0.8.0
+[Unreleased]: https://github.com/egraphs-good/egg/compare/v0.7.1...HEAD
 [0.7.1]: https://github.com/egraphs-good/egg/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/egraphs-good/egg/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/egraphs-good/egg/compare/v0.5.0...v0.6.0

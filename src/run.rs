@@ -151,42 +151,13 @@ pub struct Runner<L: Language, N: Analysis<L>, IterData = ()> {
     #[allow(clippy::type_complexity)]
     pub hooks: Vec<Box<dyn FnMut(&mut Self) -> Result<(), String>>>,
 
-    limits: RunnerLimits,
-    scheduler: Box<dyn RewriteScheduler<L, N>>,
-}
-
-/// Describes the limits that would stop a [`Runner`].
-#[derive(Debug)]
-pub struct RunnerLimits {
+    // limits
     iter_limit: usize,
     node_limit: usize,
     time_limit: Duration,
+
     start_time: Option<Instant>,
-}
-
-impl RunnerLimits {
-    /// Check if the [`Runner`] should stop based on the limits.
-    pub fn check_limits<L, N>(&self, iteration: usize, egraph: &EGraph<L, N>) -> RunnerResult<()>
-    where
-        L: Language,
-        N: Analysis<L>,
-    {
-        let elapsed = self.start_time.unwrap().elapsed();
-        if elapsed > self.time_limit {
-            return Err(StopReason::TimeLimit(elapsed.as_secs_f64()));
-        }
-
-        let size = egraph.total_size();
-        if size > self.node_limit {
-            return Err(StopReason::NodeLimit(size));
-        }
-
-        if iteration >= self.iter_limit {
-            return Err(StopReason::IterationLimit(iteration));
-        }
-
-        Ok(())
-    }
+    scheduler: Box<dyn RewriteScheduler<L, N>>,
 }
 
 impl<L, N> Default for Runner<L, N, ()>
@@ -213,7 +184,10 @@ where
             roots,
             stop_reason,
             hooks,
-            limits,
+            iter_limit,
+            node_limit,
+            time_limit,
+            start_time,
             scheduler: _,
         } = self;
 
@@ -223,7 +197,10 @@ where
             .field("roots", roots)
             .field("stop_reason", stop_reason)
             .field("hooks", &vec![format_args!("<dyn FnMut ..>"); hooks.len()])
-            .field("limits", limits)
+            .field("iter_limit", iter_limit)
+            .field("node_limit", node_limit)
+            .field("time_limit", time_limit)
+            .field("start_time", start_time)
             .field("scheduler", &format_args!("<dyn RewriteScheduler ..>"))
             .finish()
     }
@@ -326,8 +303,7 @@ pub struct Iteration<IterData> {
     pub stop_reason: Option<StopReason>,
 }
 
-/// Type alias for the result of a [`Runner`].
-pub type RunnerResult<T> = std::result::Result<T, StopReason>;
+type RunnerResult<T> = std::result::Result<T, StopReason>;
 
 impl<L, N, IterData> Runner<L, N, IterData>
 where
@@ -338,37 +314,34 @@ where
     /// Create a new `Runner` with the given analysis and default parameters.
     pub fn new(analysis: N) -> Self {
         Self {
-            limits: RunnerLimits {
-                iter_limit: 30,
-                node_limit: 10_000,
-                time_limit: Duration::from_secs(5),
-                start_time: None,
-            },
+            iter_limit: 30,
+            node_limit: 10_000,
+            time_limit: Duration::from_secs(5),
+
             egraph: EGraph::new(analysis),
             roots: vec![],
             iterations: vec![],
             stop_reason: None,
             hooks: vec![],
+
+            start_time: None,
             scheduler: Box::new(BackoffScheduler::default()),
         }
     }
 
     /// Sets the iteration limit. Default: 30
-    pub fn with_iter_limit(mut self, iter_limit: usize) -> Self {
-        self.limits.iter_limit = iter_limit;
-        self
+    pub fn with_iter_limit(self, iter_limit: usize) -> Self {
+        Self { iter_limit, ..self }
     }
 
     /// Sets the egraph size limit (in enodes). Default: 10,000
-    pub fn with_node_limit(mut self, node_limit: usize) -> Self {
-        self.limits.node_limit = node_limit;
-        self
+    pub fn with_node_limit(self, node_limit: usize) -> Self {
+        Self { node_limit, ..self }
     }
 
     /// Sets the runner time limit. Default: 5 seconds
-    pub fn with_time_limit(mut self, time_limit: Duration) -> Self {
-        self.limits.time_limit = time_limit;
-        self
+    pub fn with_time_limit(self, time_limit: Duration) -> Self {
+        Self { time_limit, ..self }
     }
 
     /// Add a hook to instrument or modify the behavior of a [`Runner`].
@@ -464,20 +437,6 @@ where
         self
     }
 
-    /// By default, egg runs a greedy algorithm to reduce the size of resulting explanations (without complexity overhead).
-    /// Use this function to turn this algorithm off.
-    pub fn without_explanation_length_optimization(mut self) -> Self {
-        self.egraph = self.egraph.without_explanation_length_optimization();
-        self
-    }
-
-    /// By default, egg runs a greedy algorithm to reduce the size of resulting explanations (without complexity overhead).
-    /// Use this function to turn this algorithm on again if you have turned it off.
-    pub fn with_explanation_length_optimization(mut self) -> Self {
-        self.egraph = self.egraph.with_explanation_length_optimization();
-        self
-    }
-
     /// Disable explanations for this runner's egraph.
     pub fn with_explanations_disabled(mut self) -> Self {
         self.egraph = self.egraph.with_explanations_disabled();
@@ -564,17 +523,12 @@ where
         let start_time = Instant::now();
 
         let mut matches = Vec::new();
-        let mut applied = IndexMap::default();
         result = result.and_then(|_| {
-            matches = self
-                .scheduler
-                .search_rewrites(i, &self.egraph, rules, &self.limits)?;
-            Ok(())
-            // rules.iter().try_for_each(|rw| {
-            //     let ms = self.scheduler.search_rewrite(i, &self.egraph, rw);
-            //     matches.push(ms);
-            //     self.check_limits()
-            // })
+            rules.iter().try_for_each(|rule| {
+                let ms = self.scheduler.search_rewrite(i, &self.egraph, rule);
+                matches.push(ms);
+                self.check_limits()
+            })
         });
 
         let search_time = start_time.elapsed().as_secs_f64();
@@ -582,6 +536,7 @@ where
 
         let apply_time = Instant::now();
 
+        let mut applied = IndexMap::default();
         result = result.and_then(|_| {
             rules.iter().zip(matches).try_for_each(|(rw, ms)| {
                 let total_matches: usize = ms.iter().map(|m| m.substs.len()).sum();
@@ -619,13 +574,8 @@ where
 
         let can_be_saturated = applied.is_empty()
             && self.scheduler.can_stop(i)
-            // now make sure the hooks didn't do anything
             && (egraph_nodes == egraph_nodes_after_hooks)
-            && (egraph_classes == egraph_classes_after_hooks)
-            // now make sure that conditional rules (which might add
-            // nodes without applying) didn't do anything
-            && (egraph_nodes == self.egraph.total_size())
-            && (egraph_classes == self.egraph.number_of_classes());
+            && (egraph_classes == egraph_classes_after_hooks);
 
         if can_be_saturated {
             result = result.and(Err(StopReason::Saturated))
@@ -640,19 +590,32 @@ where
             apply_time,
             rebuild_time,
             n_rebuilds,
-            data: IterData::make(self),
+            data: IterData::make(&self),
             total_time: start_time.elapsed().as_secs_f64(),
             stop_reason: result.err(),
         }
     }
 
     fn try_start(&mut self) {
-        self.limits.start_time.get_or_insert_with(Instant::now);
+        self.start_time.get_or_insert_with(Instant::now);
     }
 
     fn check_limits(&self) -> RunnerResult<()> {
-        self.limits
-            .check_limits(self.iterations.len(), &self.egraph)
+        let elapsed = self.start_time.unwrap().elapsed();
+        if elapsed > self.time_limit {
+            return Err(StopReason::TimeLimit(elapsed.as_secs_f64()));
+        }
+
+        let size = self.egraph.total_size();
+        if size > self.node_limit {
+            return Err(StopReason::NodeLimit(size));
+        }
+
+        if self.iterations.len() >= self.iter_limit {
+            return Err(StopReason::IterationLimit(self.iterations.len()));
+        }
+
+        Ok(())
     }
 }
 
@@ -708,57 +671,6 @@ where
         rewrite: &'a Rewrite<L, N>,
     ) -> Vec<SearchMatches<'a, L>> {
         rewrite.search(egraph)
-    }
-
-    /// A hook allowing you to customize rewrite searching behavior
-    /// across rewrites.
-    ///
-    /// Default implementation calls
-    /// [`Self::search_rewrite`] for each rewrite,
-    /// and checks [`RunnerLimits::check_limits`] after each.
-    ///
-    /// Returning an error will stop the runner.
-    ///
-    /// You might use this to implement parallel rule application:
-    /// ```
-    /// # use egg::*;
-    /// pub struct ParallelRewriteScheduler;
-    /// impl RewriteScheduler<SymbolLang, ()> for ParallelRewriteScheduler {
-    ///     fn search_rewrites<'a>(
-    ///         &mut self,
-    ///         iteration: usize,
-    ///         egraph: &EGraph<SymbolLang, ()>,
-    ///         rewrites: &[&'a Rewrite<SymbolLang, ()>],
-    ///         _limits: &RunnerLimits,
-    ///     ) -> RunnerResult<Vec<Vec<SearchMatches<'a, SymbolLang>>>> {
-    ///         // this implementation just ignores the limits
-    ///         // fake `par_map` to enforce Send + Sync, in real life use rayon
-    ///         fn par_map<T, F, T2>(slice: &[T], f: F) -> Vec<T2>
-    ///         where
-    ///             T: Send + Sync,
-    ///             F: Fn(&T) -> T2 + Send + Sync,
-    ///             T2: Send + Sync,
-    ///         {
-    ///             slice.iter().map(f).collect()
-    ///         }
-    ///         Ok(par_map(rewrites, |rw| rw.search(egraph)))
-    ///     }
-    /// }
-    /// ```
-    fn search_rewrites<'a>(
-        &mut self,
-        iteration: usize,
-        egraph: &EGraph<L, N>,
-        rewrites: &[&'a Rewrite<L, N>],
-        limits: &RunnerLimits,
-    ) -> RunnerResult<Vec<Vec<SearchMatches<'a, L>>>> {
-        let mut matches = Vec::new();
-        for rw in rewrites {
-            let ms = self.search_rewrite(iteration, egraph, rw);
-            matches.push(ms);
-            limits.check_limits(iteration, egraph)?;
-        }
-        Ok(matches)
     }
 
     /// A hook allowing you to customize rewrite application behavior.
@@ -948,12 +860,9 @@ where
             return vec![];
         }
 
-        let threshold = stats
-            .match_limit
-            .checked_shl(stats.times_banned as u32)
-            .unwrap();
-        let matches = rewrite.search_with_limit(egraph, threshold.saturating_add(1));
+        let matches = rewrite.search(egraph);
         let total_len: usize = matches.iter().map(|m| m.substs.len()).sum();
+        let threshold = stats.match_limit << stats.times_banned;
         if total_len > threshold {
             let ban_length = stats.ban_length << stats.times_banned;
             stats.times_banned += 1;

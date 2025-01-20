@@ -29,18 +29,8 @@ use thiserror::Error;
 /// See [`SymbolLang`] for quick-and-dirty use cases.
 #[allow(clippy::len_without_is_empty)]
 pub trait Language: Debug + Clone + Eq + Ord + Hash {
-    /// Type representing the cases of this language.
-    ///
-    /// Used for short-circuiting the search for equivalent nodes.
-    type Discriminant: Debug + Clone + Eq + Hash;
-
-    /// Return the `Discriminant` of this node.
-    #[allow(enum_intrinsics_non_enums)]
-    fn discriminant(&self) -> Self::Discriminant;
-
     /// Returns true if this enode matches another enode.
-    /// This should only consider the operator and the arity,
-    /// not the children `Id`s.
+    /// This should only consider the operator, not the children `Id`s.
     fn matches(&self, other: &Self) -> bool;
 
     /// Returns the children of this e-node.
@@ -370,12 +360,10 @@ impl LanguageChildren for Id {
 /// a list of enodes.
 ///
 /// [`RecExpr`]s must satisfy the invariant that enodes' children must refer to
-/// elements that come before it in the list. For example, the expression
-/// `(+ (* x 5) x)` could be represented by a recursive expression of the form
-/// `[Num(5), Var("x"), Mul(1, 0), Add(2, 1)]`.
+/// elements that come before it in the list.
 ///
 /// If the `serde-1` feature is enabled, this implements
-/// [`serde::Serialize`](https://docs.rs/serde/latest/serde/trait.Serialize.html).
+/// [`serde::Serialize`][https://docs.rs/serde/latest/serde/trait.Serialize.html].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecExpr<L> {
     nodes: Vec<L>,
@@ -410,12 +398,6 @@ impl<L> From<Vec<L>> for RecExpr<L> {
     }
 }
 
-impl<L> From<RecExpr<L>> for Vec<L> {
-    fn from(val: RecExpr<L>) -> Self {
-        val.nodes
-    }
-}
-
 impl<L: Language> RecExpr<L> {
     /// Adds a given enode to this `RecExpr`.
     /// The enode's children `Id`s must refer to elements already in this list.
@@ -431,7 +413,7 @@ impl<L: Language> RecExpr<L> {
     }
 
     pub(crate) fn compact(mut self) -> Self {
-        let mut ids = hashmap_with_capacity::<Id, Id>(self.nodes.len());
+        let mut ids = HashMap::<Id, Id>::default();
         let mut set = IndexSet::default();
         for (i, node) in self.nodes.drain(..).enumerate() {
             let node = node.map_children(|id| ids[&id]);
@@ -456,11 +438,6 @@ impl<L: Language> RecExpr<L> {
             }
         }
         true
-    }
-
-    /// Get the root node of this expression. When adding a new node via `add`, it becomes the new root.
-    pub fn root(&self) -> Id {
-        Id::from(self.nodes.len() - 1)
     }
 }
 
@@ -489,8 +466,7 @@ impl<L: Language + Display> Display for RecExpr<L> {
 }
 
 impl<L: Language + Display> RecExpr<L> {
-    /// Convert this RecExpr into an Sexp
-    pub(crate) fn to_sexp(&self) -> Sexp {
+    fn to_sexp(&self) -> Sexp {
         let last = self.nodes.len() - 1;
         if !self.is_dag() {
             log::warn!("Tried to print a non-dag: {:?}", self.nodes);
@@ -607,14 +583,11 @@ impl<L: FromOp> FromStr for RecExpr<L> {
 /// Result of [`Analysis::merge`] indicating which of the inputs
 /// are different from the merged result.
 ///
-/// The fields correspond to whether the initial `a` and `b` inputs to [`Analysis::merge`]
-/// were different from the final merged value.
+/// The fields correspond to whether the `a` and `b` inputs to [`Analysis::merge`]
+/// were changed in any way by the merge.
 ///
 /// In both cases the result may be conservative -- they may indicate `true` even
 /// when there is no difference between the input and the result.
-///
-/// `DidMerge`s can be "or"ed together using the `|` operator.
-/// This can be useful for composing analyses.
 pub struct DidMerge(pub bool, pub bool);
 
 impl BitOr for DidMerge {
@@ -668,7 +641,7 @@ impl Analysis<SimpleMath> for ConstantFolding {
         egg::merge_max(to, from)
     }
 
-    fn make(egraph: &mut EGraph<SimpleMath, Self>, enode: &SimpleMath) -> Self::Data {
+    fn make(egraph: &EGraph<SimpleMath, Self>, enode: &SimpleMath) -> Self::Data {
         let x = |i: &Id| egraph[*i].data;
         match enode {
             SimpleMath::Num(n) => Some(*n),
@@ -708,21 +681,12 @@ pub trait Analysis<L: Language>: Sized {
     /// The per-[`EClass`] data for this analysis.
     type Data: Debug;
 
-    /// Makes a new [`Analysis`] data for a given e-node.
+    /// Makes a new [`Analysis`] for a given enode
+    /// [`Analysis`].
     ///
-    /// Note the mutable `egraph` parameter: this is needed for some
-    /// advanced use cases, but most use cases will not need to mutate
-    /// the e-graph in any way.
-    /// It is **not** `make`'s responsiblity to insert the e-node;
-    /// the e-node is "being inserted" when this function is called.
-    /// Doing so will create an infinite loop.
-    ///
-    /// Note that `enode`'s children may not be canonical
-    fn make(egraph: &mut EGraph<L, Self>, enode: &L) -> Self::Data;
+    fn make(&self, egraph: &EGraph<L, Self>, enode: &L) -> Self::Data;
 
     /// An optional hook that allows inspection before a [`union`] occurs.
-    /// When explanations are enabled, it gives two ids that represent the two particular terms being unioned, not the canonical ids for the two eclasses.
-    /// It also gives a justification for the union when explanations are enabled.
     ///
     /// By default it does nothing.
     ///
@@ -731,13 +695,7 @@ pub trait Analysis<L: Language>: Sized {
     ///
     /// [`union`]: EGraph::union()
     #[allow(unused_variables)]
-    fn pre_union(
-        egraph: &EGraph<L, Self>,
-        id1: Id,
-        id2: Id,
-        justification: &Option<Justification>,
-    ) {
-    }
+    fn pre_union(egraph: &EGraph<L, Self>, id1: Id, id2: Id) {}
 
     /// Defines how to merge two `Data`s when their containing
     /// [`EClass`]es merge.
@@ -771,21 +729,11 @@ pub trait Analysis<L: Language>: Sized {
     /// `Analysis::merge` when unions are performed.
     #[allow(unused_variables)]
     fn modify(egraph: &mut EGraph<L, Self>, id: Id) {}
-
-    /// Whether or not e-matching should allow finding cycles.
-    ///
-    /// By default, this returns `true`.
-    ///
-    /// Setting this to `false` can improve performance in some cases, but risks
-    /// missing some equalities depending on the use case.
-    fn allow_ematching_cycles(&self) -> bool {
-        true
-    }
 }
 
 impl<L: Language> Analysis<L> for () {
     type Data = ();
-    fn make(_egraph: &mut EGraph<L, Self>, _enode: &L) -> Self::Data {}
+    fn make(&self, _egraph: &EGraph<L, Self>, _enode: &L) -> Self::Data {}
     fn merge(&mut self, _: &mut Self::Data, _: Self::Data) -> DidMerge {
         DidMerge(false, false)
     }
@@ -820,28 +768,6 @@ pub fn merge_min<T: Ord>(to: &mut T, from: T) -> DidMerge {
         }
     }
 }
-
-/// A utility for implementing [`Analysis::merge`]
-/// when the `Data` type is an [`Option`].
-///
-/// Always take a `Some` over a `None`
-/// and calls the given function to merge two `Some`s.
-pub fn merge_option<T>(
-    to: &mut Option<T>,
-    from: Option<T>,
-    merge_fn: impl FnOnce(&mut T, T) -> DidMerge,
-) -> DidMerge {
-    match (to.as_mut(), from) {
-        (None, None) => DidMerge(false, false),
-        (None, from @ Some(_)) => {
-            *to = from;
-            DidMerge(true, false)
-        }
-        (Some(_), None) => DidMerge(false, true),
-        (Some(a), Some(b)) => merge_fn(a, b),
-    }
-}
-
 /// A simple language used for testing.
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde-1", derive(serde::Serialize, serde::Deserialize))]
@@ -866,12 +792,6 @@ impl SymbolLang {
 }
 
 impl Language for SymbolLang {
-    type Discriminant = Symbol;
-
-    fn discriminant(&self) -> Self::Discriminant {
-        self.op
-    }
-
     fn matches(&self, other: &Self) -> bool {
         self.op == other.op && self.len() == other.len()
     }

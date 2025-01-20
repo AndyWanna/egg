@@ -1,12 +1,12 @@
 use pattern::apply_pat;
 use std::fmt::{self, Debug, Display};
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 use crate::*;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
-/// The [`rewrite!`] macro is the easiest way to create rewrites.
+/// The [`rewrite!`] is the easiest way to create rewrites.
 ///
 /// A [`Rewrite`] consists principally of a [`Searcher`] (the lefthand
 /// side) and an [`Applier`] (the righthand side).
@@ -27,20 +27,19 @@ pub struct Rewrite<L, N> {
 impl<L, N> Debug for Rewrite<L, N>
 where
     L: Language + Display + 'static,
-    N: Analysis<L> + 'static,
+    N: 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_struct("Rewrite");
         d.field("name", &self.name);
 
-        // if let Some(pat) = Any::downcast_ref::<dyn Pattern<L>>(&self.searcher) {
-        if let Some(pat) = self.searcher.get_pattern_ast() {
+        if let Some(pat) = Any::downcast_ref::<Pattern<L>>(&self.searcher) {
             d.field("searcher", &DisplayAsDebug(pat));
         } else {
             d.field("searcher", &"<< searcher >>");
         }
 
-        if let Some(pat) = self.applier.get_pattern_ast() {
+        if let Some(pat) = Any::downcast_ref::<Pattern<L>>(&self.applier) {
             d.field("applier", &DisplayAsDebug(pat));
         } else {
             d.field("applier", &"<< applier >>");
@@ -84,13 +83,6 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
         self.searcher.search(egraph)
     }
 
-    /// Call [`search_with_limit`] on the [`Searcher`].
-    ///
-    /// [`search_with_limit`]: Searcher::search_with_limit()
-    pub fn search_with_limit(&self, egraph: &EGraph<L, N>, limit: usize) -> Vec<SearchMatches<L>> {
-        self.searcher.search_with_limit(egraph, limit)
-    }
-
     /// Call [`apply_matches`] on the [`Applier`].
     ///
     /// [`apply_matches`]: Applier::apply_matches()
@@ -122,41 +114,10 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
     }
 }
 
-/// Searches the given list of e-classes with a limit.
-pub(crate) fn search_eclasses_with_limit<'a, I, S, L, N>(
-    searcher: &'a S,
-    egraph: &EGraph<L, N>,
-    eclasses: I,
-    mut limit: usize,
-) -> Vec<SearchMatches<'a, L>>
-where
-    L: Language,
-    N: Analysis<L>,
-    S: Searcher<L, N> + ?Sized,
-    I: IntoIterator<Item = Id>,
-{
-    let mut ms = vec![];
-    for eclass in eclasses {
-        if limit == 0 {
-            break;
-        }
-        match searcher.search_eclass_with_limit(egraph, eclass, limit) {
-            None => continue,
-            Some(m) => {
-                let len = m.substs.len();
-                assert!(len <= limit);
-                limit -= len;
-                ms.push(m);
-            }
-        }
-    }
-    ms
-}
-
 /// The lefthand side of a [`Rewrite`].
 ///
 /// A [`Searcher`] is something that can search the egraph and find
-/// matching substitutions.
+/// matching substititions.
 /// Right now the only significant [`Searcher`] is [`Pattern`].
 ///
 pub trait Searcher<L, N>
@@ -166,36 +127,18 @@ where
 {
     /// Search one eclass, returning None if no matches can be found.
     /// This should not return a SearchMatches with no substs.
-    fn search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id) -> Option<SearchMatches<L>> {
-        self.search_eclass_with_limit(egraph, eclass, usize::MAX)
-    }
-
-    /// Similar to [`search_eclass`], but return at most `limit` many matches.
-    ///
-    /// Implementation of [`Searcher`] should implement
-    /// [`search_eclass_with_limit`].
-    ///
-    /// [`search_eclass`]: Searcher::search_eclass
-    /// [`search_eclass_with_limit`]: Searcher::search_eclass_with_limit
-    fn search_eclass_with_limit(
-        &self,
-        egraph: &EGraph<L, N>,
-        eclass: Id,
-        limit: usize,
-    ) -> Option<SearchMatches<L>>;
+    fn search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id) -> Option<SearchMatches<L>>;
 
     /// Search the whole [`EGraph`], returning a list of all the
     /// [`SearchMatches`] where something was found.
-    /// This just calls [`Searcher::search_with_limit`] with a big limit.
-    fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches<L>> {
-        self.search_with_limit(egraph, usize::MAX)
-    }
-
-    /// Similar to [`search`], but return at most `limit` many matches.
+    /// This just calls [`search_eclass`] on each eclass.
     ///
-    /// [`search`]: Searcher::search
-    fn search_with_limit(&self, egraph: &EGraph<L, N>, limit: usize) -> Vec<SearchMatches<L>> {
-        search_eclasses_with_limit(self, egraph, egraph.classes().map(|e| e.id), limit)
+    /// [`search_eclass`]: Searcher::search_eclass
+    fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches<L>> {
+        egraph
+            .classes()
+            .filter_map(|e| self.search_eclass(egraph, e.id))
+            .collect()
     }
 
     /// Returns the number of matches in the e-graph
@@ -215,7 +158,7 @@ where
 /// The righthand side of a [`Rewrite`].
 ///
 /// An [`Applier`] is anything that can do something with a
-/// substitution ([`Subst`]). This allows you to implement rewrites
+/// substitition ([`Subst`]). This allows you to implement rewrites
 /// that determine when and how to respond to a match using custom
 /// logic, including access to the [`Analysis`] data of an [`EClass`].
 ///
@@ -250,7 +193,7 @@ where
 ///     fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
 ///         merge_min(to, from)
 ///     }
-///     fn make(egraph: &mut EGraph, enode: &Math) -> Self::Data {
+///     fn make(egraph: &EGraph, enode: &Math) -> Self::Data {
 ///         let get_size = |i: Id| egraph[i].data;
 ///         AstSize.cost(enode, get_size)
 ///     }
@@ -321,7 +264,7 @@ where
     L: Language,
     N: Analysis<L>,
 {
-    /// Apply many substitutions.
+    /// Apply many substititions.
     ///
     /// This method should call [`apply_one`] for each match.
     ///
@@ -338,11 +281,12 @@ where
     ) -> Vec<Id> {
         let mut added = vec![];
         for mat in matches {
-            let ast = if egraph.are_explanations_enabled() {
-                mat.ast.as_ref().map(|cow| cow.as_ref())
+            let ast;
+            if egraph.are_explanations_enabled() {
+                ast = mat.ast.as_ref().map(|cow| cow.as_ref());
             } else {
-                None
-            };
+                ast = None;
+            }
             for subst in &mat.substs {
                 let ids = self.apply_one(egraph, mat.eclass, subst, ast, rule_name);
                 added.extend(ids)
@@ -356,7 +300,7 @@ where
         None
     }
 
-    /// Apply a single substitution.
+    /// Apply a single substitition.
     ///
     /// An [`Applier`] should add things and union them with `eclass`.
     /// Appliers can also inspect the eclass if necessary using the
@@ -418,10 +362,6 @@ where
     A: Applier<L, N>,
     N: Analysis<L>,
 {
-    fn get_pattern_ast(&self) -> Option<&PatternAst<L>> {
-        self.applier.get_pattern_ast()
-    }
-
     fn apply_one(
         &self,
         egraph: &mut EGraph<L, N>,
@@ -600,7 +540,7 @@ mod tests {
 
         #[derive(Debug)]
         struct Appender {
-            _rhs: PatternAst<S>,
+            rhs: PatternAst<S>,
         }
 
         impl Applier<SymbolLang, ()> for Appender {
@@ -614,8 +554,8 @@ mod tests {
             ) -> Vec<Id> {
                 let a: Var = "?a".parse().unwrap();
                 let b: Var = "?b".parse().unwrap();
-                let a = get(egraph, subst[a]);
-                let b = get(egraph, subst[b]);
+                let a = get(&egraph, subst[a]);
+                let b = get(&egraph, subst[b]);
                 let s = format!("{}{}", a, b);
                 if let Some(ast) = searcher_ast {
                     let (id, did_something) = egraph.union_instantiations(
@@ -641,7 +581,7 @@ mod tests {
         }
 
         let fold_add = rewrite!(
-            "fold_add"; "(+ ?a ?b)" => { Appender { _rhs: "?a".parse().unwrap()}}
+            "fold_add"; "(+ ?a ?b)" => { Appender { rhs: "?a".parse().unwrap()}}
         );
 
         egraph.rebuild();

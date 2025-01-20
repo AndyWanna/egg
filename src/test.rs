@@ -3,8 +3,7 @@
 These are not considered part of the public api.
 */
 
-use num_traits::identities::Zero;
-use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
+use std::fmt::Display;
 
 use crate::*;
 
@@ -27,7 +26,7 @@ where
 
 #[allow(clippy::type_complexity)]
 pub fn test_runner<L, A>(
-    name: &str,
+    _name: &str,
     runner: Option<Runner<L, A, ()>>,
     rules: &[Rewrite<L, A>],
     start: RecExpr<L>,
@@ -35,10 +34,9 @@ pub fn test_runner<L, A>(
     check_fn: Option<fn(Runner<L, A, ()>)>,
     should_check: bool,
 ) where
-    L: Language + Display + FromOp + 'static,
+    L: Language + Display + 'static,
     A: Analysis<L> + Default,
 {
-    let _ = env_logger::builder().is_test(true).try_init();
     let mut runner = runner.unwrap_or_default();
 
     if let Some(lim) = env_var("EGG_NODE_LIMIT") {
@@ -51,9 +49,10 @@ pub fn test_runner<L, A>(
         runner = runner.with_time_limit(std::time::Duration::from_secs(lim))
     }
 
-    // Force sure explanations on if feature is on
     if cfg!(feature = "test-explanations") {
         runner = runner.with_explanations_enabled();
+    } else {
+        runner = runner.with_explanations_disabled();
     }
 
     runner = runner.with_expr(&start);
@@ -70,7 +69,7 @@ pub fn test_runner<L, A>(
                 .iter()
                 .all(|g: &Pattern<_>| g.search_eclass(&r.egraph, id).is_some())
             {
-                Err("Proved all goals".into())
+                Err("Done".into())
             } else {
                 Ok(())
             }
@@ -79,39 +78,23 @@ pub fn test_runner<L, A>(
     let mut runner = runner.run(rules);
 
     if should_check {
-        let report = runner.report();
-        println!("{report}");
-        runner.egraph.check_goals(id, goals);
-
-        if let Some(filename) = env_var::<PathBuf>("EGG_BENCH_CSV") {
-            let mut file = File::options()
-                .create(true)
-                .append(true)
-                .open(&filename)
-                .unwrap_or_else(|_| panic!("Couldn't open {:?}", filename));
-            writeln!(file, "{},{}", name, runner.report().total_time).unwrap();
-        }
+        runner.print_report();
+        runner.egraph.check_goals(id, &goals);
 
         if runner.egraph.are_explanations_enabled() {
             for goal in goals {
                 let matches = goal.search_eclass(&runner.egraph, id).unwrap();
                 let subst = matches.substs[0].clone();
-                // don't optimize the length for the first egraph
-                runner = runner.without_explanation_length_optimization();
                 let mut explained = runner.explain_matches(&start, &goal.ast, &subst);
-                explained.get_string_with_let();
-                let flattened = explained.make_flat_explanation().clone();
-                let vanilla_len = flattened.len();
+                println!("{}", explained);
+                explained.get_sexp_with_let();
+                explained.get_flat_sexps();
                 explained.check_proof(rules);
-                assert!(!explained.get_tree_size().is_zero());
 
-                runner = runner.with_explanation_length_optimization();
-                let mut explained_short = runner.explain_matches(&start, &goal.ast, &subst);
-                explained_short.get_string_with_let();
-                let short_len = explained_short.get_flat_strings().len();
-                assert!(short_len <= vanilla_len);
-                assert!(!explained_short.get_tree_size().is_zero());
-                explained_short.check_proof(rules);
+                let mut existance = runner.explain_existance_pattern(&goal.ast, &subst);
+                existance.get_sexp_with_let();
+                existance.get_flat_sexps();
+                existance.check_proof(rules);
             }
         }
 
@@ -129,12 +112,7 @@ fn percentile(k: f64, data: &[u128]) -> u128 {
     data[i]
 }
 
-pub fn bench_egraph<L, N>(
-    _name: &str,
-    rules: Vec<Rewrite<L, N>>,
-    exprs: &[&str],
-    extra_patterns: &[&str],
-) -> EGraph<L, N>
+pub fn bench_egraph<L, N>(_name: &str, rules: Vec<Rewrite<L, N>>, exprs: &[&str]) -> EGraph<L, N>
 where
     L: Language + FromOp + 'static + Display,
     N: Analysis<L> + Default + 'static,
@@ -148,11 +126,6 @@ where
             patterns.push(ast.alpha_rename().into())
         }
     }
-    for extra in extra_patterns {
-        let p: Pattern<L> = extra.parse().unwrap();
-        patterns.push(p.ast.alpha_rename().into());
-    }
-
     eprintln!("{} patterns", patterns.len());
 
     patterns.retain(|p| p.ast.as_ref().len() > 1);
@@ -219,31 +192,7 @@ where
     egraph
 }
 
-/// Utility to make a test proving expressions equivalent
-///
-/// # Example
-///
-/// ```
-/// # use egg::*;
-/// egg::test_fn! {
-///     // name of the generated test function
-///     my_test_name,
-///     // the rules to use
-///     [
-///         rewrite!("my_silly_rewrite"; "(foo ?a)" => "(bar ?a)"),
-///         rewrite!("my_other_rewrite"; "(bar ?a)" => "(baz ?a)"),
-///     ],
-///     // the `runner = ...` is optional
-///     // if included, this must come right after the rules
-///     runner = Runner::<SymbolLang, (), _>::default(),
-///     // the initial expression
-///     "(foo 1)" =>
-///     // 1 or more goal expressions, all of which will be check to be
-///     // equivalent to the initial one
-///     "(bar 1)",
-///     "(baz 1)",
-/// }
-/// ```
+/// Make a test function
 #[macro_export]
 macro_rules! test_fn {
     (
@@ -255,20 +204,25 @@ macro_rules! test_fn {
         $($goal:literal),+ $(,)?
         $(@check $check_fn:expr)?
     ) => {
+        mod $name {
+            use super::*;
+            pub fn run(check: bool) {
+                let _ = env_logger::builder().is_test(true).try_init();
 
-    $(#[$meta])*
-    #[test]
-    pub fn $name() {
-        // NOTE this is no longer needed, we always check
-        let check = true;
-        $crate::test::test_runner(
-            stringify!($name),
-            None $(.or(Some($runner)))?,
-            &$rules,
-            $start.parse().unwrap(),
-            &[$( $goal.parse().unwrap() ),+],
-            None $(.or(Some($check_fn)))?,
-            check,
-        )
-    }};
+                $crate::test::test_runner(
+                    stringify!($name),
+                    None $(.or(Some($runner)))?,
+                    &$rules,
+                    $start.parse().unwrap(),
+                    &[$( $goal.parse().unwrap() ),+],
+                    None $(.or(Some($check_fn)))?,
+                    check,
+                )
+            }
+
+            $(#[$meta])* #[test] fn test() { run(true) }
+        }
+
+        pub fn $name() { $name::run(false) }
+    };
 }
