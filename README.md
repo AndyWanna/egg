@@ -41,6 +41,10 @@ Please cite using the BibTeX below and
 
 Check out the [egg web demo](https://egraphs-good.github.io/egg-web-demo) for some quick e-graph action!
 
+# Andy's Fork
+Forked to tweak egg as I go, each branch corresponds to diff project with diff needs. Main should stay synced with master branch.
+
+
 ## Using egg
 
 Add `egg` to your `Cargo.toml` like this:
