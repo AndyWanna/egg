@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Debug, Display},
 };
 
+use indexmap::IndexSet;
 #[cfg(feature = "serde-1")]
 use ::serde::{Deserialize, Serialize};
 
@@ -200,6 +201,91 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn are_explanations_enabled(&self) -> bool {
         self.explain.is_some()
     }
+
+        // Passed Test 1
+    /// Function that gets all child IDs of E-Nodes in an E-Class
+    pub fn get_child_ids(&self, eclass_id: Id) -> Vec<Id> {
+        let eclass = &self[eclass_id];
+        let mut child_ids: Vec<Id> = vec![];
+        for enode in eclass.iter() {
+            let child_class = enode.children();
+            child_ids.extend(child_class);
+        }
+    
+        child_ids
+    }
+
+    // Passed Test 1 
+    /// Function that gets all IDs Below an E-Class, that form a sub E-Graph
+    /// // Order of index is top to bottom -> probably?
+    pub fn get_all_child_ids(&self, top_class_id: Id) -> IndexSet<Id> {
+
+        let mut sub_egraph_ids: IndexSet<Id> = IndexSet::new();
+        sub_egraph_ids.insert(top_class_id);
+
+        let mut iter = 0;
+
+        while iter < sub_egraph_ids.len() {
+            let eclass_id = match sub_egraph_ids.get_index(iter){
+                Some(x) => *x,
+                None => panic!("This should not reachable -- Trying to adress IndexSet out of bounds!")
+            };
+            let child_ids = self.get_child_ids(eclass_id);
+            sub_egraph_ids.extend(child_ids);
+            iter+=1;
+        }
+
+        sub_egraph_ids
+    }
+
+    /// Performs the union between two egraphs.
+    /// 
+    /// ANDY MODIFICATION: Return a map of the old_egraph IDs to the new
+    pub fn egraph_union_with_outmap(&mut self, other: &EGraph<L, N>, other_egraph_top_id: Id) -> HashMap<Id, Id> {
+        let mut egraph_id_mapping:HashMap<Id,Id> = HashMap::default();
+
+        // Each Id we add needs to be unique to the original egraph
+        // As a result need to add Ids from the bottom up
+        let other_ids = other.get_all_child_ids(other_egraph_top_id);
+        // we want to iterate in reverse order
+        for class_id in other_ids.iter().rev(){
+            let eclass = &other[*class_id];
+            let mut eclass_nodes = eclass.nodes.clone();
+            for node in eclass_nodes.iter_mut() {
+                // Mutably modify the node to point to new class references
+                let child_classes = node.children_mut();
+                for other_id in child_classes {
+                    match egraph_id_mapping.get(other_id) {
+                        Some(new_id) => {*other_id = *new_id;}, // if the old_id had been mapped update the class to point at the new_id
+                        None => {} // otherwise do nothing?
+                    }
+                }
+            }
+            
+            // add equivelent representations of the class and union to a single id
+            let new_class_id = self.add(eclass_nodes[0].clone());
+            for eq_node in eclass_nodes{
+                let eq_id = self.add(eq_node);
+                self.union(new_class_id, eq_id);
+            }
+
+            // record the new class mapping
+            egraph_id_mapping.insert(*class_id, new_class_id);
+        }
+
+        // for eclass in other.classes() {
+        //     let original_class_id = eclass.id;
+        //     let class_nodes = eclass.nodes.clone();
+        //     let new_class_id = self.add(class_nodes[0].clone());
+
+        //     let pattern_list = other.id
+        //     egraph_id_mapping.insert(original_class_id, new_class_id);
+        // }
+
+        self.rebuild();
+        return egraph_id_mapping;
+    }
+
 
     /// When explanations are enabled, this function
     /// produces an [`Explanation`] describing why two expressions are equivalent.
@@ -683,6 +769,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`Debug`]: std::fmt::Debug
     pub fn dump(&self) -> impl Debug + '_ {
         EGraphDump(self)
+    }
+
+    /// Remove an E-Class from an E-graph (unsafe/untested - Andys Implementation)
+    /// WARNING this should only be used when removing nodes that point to this class aswell!
+    pub fn remove(&mut self, id1: Id){
+        self.classes.remove(&id1);
     }
 }
 
