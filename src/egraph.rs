@@ -578,7 +578,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     /// Adds an enode to the egraph and also returns the the enode's id (uncanonicalized).
-    fn add_internal(&mut self, mut enode: L) -> Id {
+    pub fn add_internal(&mut self, mut enode: L) -> Id {
         let original = enode.clone();
         if let Some(existing_id) = self.lookup_internal(&mut enode) {
             let id = self.find(existing_id);
