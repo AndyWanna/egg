@@ -35,8 +35,8 @@ impl<L, D> EClass<L, D> {
     }
 
     /// Iterates over the non-canonical ids of parent enodes of this eclass.
-    pub fn parents(&self) -> impl ExactSizeIterator<Item = Id> + '_ {
-        self.parents.iter().map( |(_, p)| *p)
+    pub fn parents(&self) -> impl ExactSizeIterator<Item = (&L, Id)> + '_ {
+        self.parents.iter().map( |(n, p)| (n, *p))
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::*;
 use std::{
     borrow::BorrowMut,
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug, Display}, ops::Index,
 };
 
 use indexmap::IndexSet;
@@ -776,6 +776,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn remove(&mut self, id1: Id){
         self.classes.remove(&id1);
     }
+
+    /// Remove an E-Node mapping to an ID from an E-graph (unsafe/untested - Andys Implementation)
+    /// WARNING this should only be used when removing nodes that point to this class aswell!
+    fn remove_expr(&mut self, expr: &L){
+        self.memo.remove(expr);
+    }
+
+    /// Remove all E-Node mappings within an E-Class to an ID from an E-graph (unsafe/untested - Andys Implementation)
+    /// WARNING this should only be used when removing nodes that point to this class aswell!
+    pub fn remove_class_exprs(&mut self, id1: Id){
+        for expr in  self.classes[&id1].nodes.clone()
+        {
+            self.remove_expr(&expr);
+        }
+    }
+    
+
 }
 
 impl<L: Language + Display, N: Analysis<L>> EGraph<L, N> {
