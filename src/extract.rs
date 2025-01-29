@@ -117,7 +117,7 @@ pub trait CostFunction<L: Language> {
     /// For this to work properly, your cost function should be
     /// _monotonic_, i.e. `cost` should return a `Cost` greater than
     /// any of the child costs of the given enode.
-    fn cost<C>(&mut self, enode: &L, costs: C) -> Self::Cost
+    fn cost<C>(&self, enode: &L, costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost;
 
@@ -150,7 +150,7 @@ assert_eq!(AstSize.cost_rec(&e), 4);
 pub struct AstSize;
 impl<L: Language> CostFunction<L> for AstSize {
     type Cost = usize;
-    fn cost<C>(&mut self, enode: &L, mut costs: C) -> Self::Cost
+    fn cost<C>(&self, enode: &L, mut costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost,
     {
@@ -171,7 +171,7 @@ assert_eq!(AstDepth.cost_rec(&e), 2);
 pub struct AstDepth;
 impl<L: Language> CostFunction<L> for AstDepth {
     type Cost = usize;
-    fn cost<C>(&mut self, enode: &L, mut costs: C) -> Self::Cost
+    fn cost<C>(&self, enode: &L, mut costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost,
     {
@@ -232,7 +232,8 @@ where
         cost.clone()
     }
 
-    fn node_total_cost(&mut self, node: &L) -> Option<CF::Cost> {
+    /// Find the cost of an Enode, if all its children classes are in the extractor
+    pub fn node_total_cost(&self, node: &L) -> Option<CF::Cost> {
         let eg = &self.egraph;
         let has_cost = |id| self.costs.contains_key(&eg.find(id));
         if node.all(has_cost) {
