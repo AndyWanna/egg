@@ -217,7 +217,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     // Passed Test 1 
     /// Function that gets all IDs Below an E-Class, that form a sub E-Graph
-    /// // Order of index is top to bottom -> probably?
+    /// // Order of index is top to bottom -> probably? Not true!!! :((
     pub fn get_all_child_ids(&self, top_class_id: Id) -> IndexSet<Id> {
 
         let mut sub_egraph_ids: IndexSet<Id> = IndexSet::new();
@@ -232,9 +232,43 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 None => panic!("This should not reachable -- Trying to adress IndexSet out of bounds!")
             };
             let child_ids = self.get_child_ids(eclass_id);
-            sub_egraph_ids.extend(child_ids);
+            for e in child_ids {
+                let _in_set = sub_egraph_ids.shift_remove(&e); 
+                sub_egraph_ids.insert(e);
+            }
             iter+=1;
         }
+
+
+        sub_egraph_ids
+    }
+
+    /// Function that gets all IDs Below an E-Class, that form a sub E-Graph
+    /// // Order of index is top to bottom -> probably? Not true!!! :((
+    pub fn dfs_get_all_child_ids(&self, top_class_id: Id) -> IndexSet<Id> {
+        let mut sub_egraph_ids: IndexSet<Id> = IndexSet::new();
+        let canonical_id = self.find(top_class_id);
+        sub_egraph_ids.insert(canonical_id);
+
+        // let mut iter = 0;
+
+        // while iter < sub_egraph_ids.len() {
+            // let eclass_id = match sub_egraph_ids.get_index(iter){
+            //     Some(x) => *x,
+            //     None => panic!("This should not reachable -- Trying to adress IndexSet out of bounds!")
+            // };
+            let eclass_id = canonical_id;
+            let child_ids = self.get_child_ids(eclass_id);
+            for child in child_ids {
+                let deep_children_ids = self.dfs_get_all_child_ids(child);
+                for e in deep_children_ids {
+                    // this effecitvely adds the element to the end of the index set if it seen later
+                    let _in_set = sub_egraph_ids.shift_remove(&e); 
+                    sub_egraph_ids.insert(e);
+                }
+            }
+        //     iter+=1;
+        // }
 
         sub_egraph_ids
     }
@@ -256,7 +290,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 // Mutably modify the node to point to new class references
                 let child_classes = node.children_mut();
                 for other_id in child_classes {
-                    match egraph_id_mapping.get(other_id) {
+                    let canonical_child_id = other.find(*other_id); // get the canonicalized id
+                    match egraph_id_mapping.get(&canonical_child_id) {
                         Some(new_id) => {*other_id = *new_id;}, // if the old_id had been mapped update the class to point at the new_id
                         None => {} // otherwise do nothing?
                     }
