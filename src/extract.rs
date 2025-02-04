@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt::Debug;
 
+use log::info;
+
 use crate::util::HashMap;
 use crate::{Analysis, EClass, EGraph, Id, Language, RecExpr};
 
@@ -217,6 +219,9 @@ where
     /// given eclass.
     pub fn find_best(&self, eclass: Id) -> (CF::Cost, RecExpr<L>) {
         let (cost, root) = self.costs[&self.egraph.find(eclass)].clone();
+        // Do we even find the cost??
+        info!("In Costs!");
+        info!("Cost of Node - {root:?} : {cost:?}");
         let expr = root.build_recexpr(|id| self.find_best_node(id).clone());
         (cost, expr)
     }
@@ -229,7 +234,7 @@ where
     /// Find the cost of the term that would be extracted from this e-class.
     pub fn find_best_cost(&self, eclass: Id) -> CF::Cost {
         let (cost, _) = &self.costs[&self.egraph.find(eclass)];
-        cost.clone()
+        cost.clone( )
     }
 
     /// Find the cost of an Enode, if all its children classes are in the extractor

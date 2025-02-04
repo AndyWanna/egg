@@ -221,7 +221,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn get_all_child_ids(&self, top_class_id: Id) -> IndexSet<Id> {
 
         let mut sub_egraph_ids: IndexSet<Id> = IndexSet::new();
-        sub_egraph_ids.insert(top_class_id);
+        let canonical_id = self.find(top_class_id);
+        sub_egraph_ids.insert(canonical_id);
 
         let mut iter = 0;
 
@@ -367,7 +368,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// egraph.rebuild();
     /// assert_eq!(egraph.find(x), egraph.find(y));
     /// ```
-    pub fn find(&self, id: Id) -> Id {
+    pub fn  find(&self, id: Id) -> Id {
         self.unionfind.find(id)
     }
 
@@ -392,10 +393,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 impl<L: Language, N: Analysis<L>> std::ops::Index<Id> for EGraph<L, N> {
     type Output = EClass<L, N::Data>;
     fn index(&self, id: Id) -> &Self::Output {
-        let id = self.find(id);
+        let id_n = self.find(id);
+        
+        if id != id_n { 
+            debug!("Searching for {id} found {id_n}")
+        };
+        
         self.classes
-            .get(&id)
-            .unwrap_or_else(|| panic!("Invalid id {}", id))
+            .get(&id_n)
+            .unwrap_or_else(|| panic!("Invalid id {}", id_n))
     }
 }
 
