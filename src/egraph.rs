@@ -221,16 +221,58 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn get_all_child_ids(&self, top_class_id: Id) -> IndexSet<Id> {
 
         let mut sub_egraph_ids: IndexSet<Id> = IndexSet::new();
+        let mut tracking_egraph_ids: IndexSet<Id> = IndexSet::new(); // We will iterate over this to make sure every node is visited and no cycles. 
         let canonical_id = self.find(top_class_id);
+
         sub_egraph_ids.insert(canonical_id);
+        tracking_egraph_ids.insert(canonical_id);
 
         let mut iter = 0;
 
+        while iter < tracking_egraph_ids.len() {
+            let eclass_id = match tracking_egraph_ids.get_index(iter){
+                Some(x) => *x,
+                None => panic!("This should not reachable -- Trying to adress IndexSet out of bounds!")
+            };
+            let child_ids = self.get_child_ids(eclass_id);
+            for e in child_ids {
+                if e != top_class_id { // if its the top class_id we do not want re add -> will cycle infinitely
+                    // insert node to both index_sets
+                    if sub_egraph_ids.shift_remove(&e) {}; // this one we will constantly move nodes around as we visit them -> might have weird cycle vulnerabilities 
+                    sub_egraph_ids.insert(e);
+                    tracking_egraph_ids.insert(e); 
+                }
+            }
+            iter+=1;
+        }
+
+
+        sub_egraph_ids
+    }
+
+    // I think this can handle cycles?
+    fn get_node_all_child_ids(&self, enode: L ) -> IndexSet<Id> {
+        let mut sub_egraph_ids: IndexSet<Id> = IndexSet::new();
+        let clone_node = enode.clone();
+        let node_children = clone_node.children();
+        let top_class_id = self.lookup(enode).unwrap_or_else(|| panic!("Enode not in egraph!!"));
+        
+        for eclass in node_children {
+            sub_egraph_ids.insert(*eclass);
+        } // insert the base set of children ids
+
+        let mut iter = 0;
         while iter < sub_egraph_ids.len() {
             let eclass_id = match sub_egraph_ids.get_index(iter){
                 Some(x) => *x,
                 None => panic!("This should not reachable -- Trying to adress IndexSet out of bounds!")
             };
+
+            if eclass_id == top_class_id {
+                println!("Cycle Detected!!");
+                continue; // We do not want to re-explore this class, just interested if the cycle exists
+            }
+
             let child_ids = self.get_child_ids(eclass_id);
             for e in child_ids {
                 let _in_set = sub_egraph_ids.shift_remove(&e); 
@@ -239,9 +281,44 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             iter+=1;
         }
 
-
         sub_egraph_ids
     }
+
+
+    /// Check if a node is part of a cycle
+    pub fn is_node_cyclic(&self, enode: &L ) -> bool {
+        let mut sub_egraph_ids: IndexSet<Id> = IndexSet::new();
+        // let clone_node = (*enode).clone();
+        let node_children = enode.children();
+        let top_class_id = self.lookup(enode.clone()).unwrap_or_else(|| panic!("Enode not in egraph!!"));
+        println!("top_id = {top_class_id}");
+        for eclass in node_children {
+            sub_egraph_ids.insert(*eclass);
+        } // insert the base set of children ids
+
+        let mut iter = 0;
+        while iter < sub_egraph_ids.len() {
+            let eclass_id = match sub_egraph_ids.get_index(iter){
+                Some(x) => *x,
+                None => panic!("This should not reachable -- Trying to adress IndexSet out of bounds!")
+            };
+
+            if eclass_id == top_class_id {
+                println!("Cycle Detected!! - Detector Function");
+                return true // dont explore further
+            }
+
+            let child_ids = self.get_child_ids(eclass_id);
+            for e in child_ids {
+                let _in_set = sub_egraph_ids.shift_remove(&e); 
+                sub_egraph_ids.insert(e);
+            }
+            iter+=1;
+        }
+
+        false // if we iterate through all children without seeing top_class no cycles
+    }
+
 
     /// Function that gets all IDs Below an E-Class, that form a sub E-Graph
     /// // Order of index is top to bottom -> probably? Not true!!! :((
