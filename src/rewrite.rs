@@ -250,7 +250,7 @@ where
 ///     fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
 ///         merge_min(to, from)
 ///     }
-///     fn make(egraph: &mut EGraph, enode: &Math) -> Self::Data {
+///     fn make(egraph: &mut EGraph, enode: &Math, _id: Id) -> Self::Data {
 ///         let get_size = |i: Id| egraph[i].data;
 ///         AstSize.cost(enode, get_size)
 ///     }
@@ -398,7 +398,7 @@ where
 ///
 /// [`apply_one`]: Applier::apply_one()
 /// [`check`]: Condition::check()
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConditionalApplier<C, A> {
     /// The [`Condition`] to [`check`] before calling [`apply_one`] on
     /// `applier`.
@@ -493,7 +493,7 @@ where
 /// This condition adds its two [`Pattern`] to the egraph and passes
 /// if and only if they are equivalent (in the same eclass).
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConditionEqual<L> {
     p1: Pattern<L>,
     p2: Pattern<L>,
