@@ -124,7 +124,7 @@ pub trait CostFunction<L: Language> {
     /// For this to work properly, your cost function should be
     /// _monotonic_, i.e. `cost` should return a `Cost` greater than
     /// any of the child costs of the given enode.
-    fn cost<C>(&mut self, enode: &L, costs: C) -> Self::Cost
+    fn cost<C>(&self, enode: &L, costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost;
 
@@ -133,7 +133,7 @@ pub trait CostFunction<L: Language> {
     /// As provided, this just recursively calls `cost` all the way
     /// down the [`RecExpr`].
     ///
-    fn cost_rec(&mut self, expr: &RecExpr<L>) -> Self::Cost {
+    fn cost_rec(&self, expr: &RecExpr<L>) -> Self::Cost {
         let mut costs = hashmap_with_capacity::<Id, Self::Cost>(expr.len());
         for (i, node) in expr.items() {
             let cost = self.cost(node, |i| costs[&i].clone());
@@ -157,7 +157,7 @@ assert_eq!(AstSize.cost_rec(&e), 4);
 pub struct AstSize;
 impl<L: Language> CostFunction<L> for AstSize {
     type Cost = usize;
-    fn cost<C>(&mut self, enode: &L, mut costs: C) -> Self::Cost
+    fn cost<C>(&self, enode: &L, mut costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost,
     {
@@ -178,7 +178,7 @@ assert_eq!(AstDepth.cost_rec(&e), 2);
 pub struct AstDepth;
 impl<L: Language> CostFunction<L> for AstDepth {
     type Cost = usize;
-    fn cost<C>(&mut self, enode: &L, mut costs: C) -> Self::Cost
+    fn cost<C>(&self, enode: &L, mut costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost,
     {

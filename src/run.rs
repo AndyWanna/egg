@@ -642,7 +642,8 @@ where
     }
 }
 
-fn check_rules<L, N>(rules: &[&Rewrite<L, N>]) {
+/// Checks the Rewrite Rules
+pub fn check_rules<L, N>(rules: &[&Rewrite<L, N>]) {
     let mut name_counts = IndexMap::default();
     for rw in rules {
         *name_counts.entry(rw.name).or_default() += 1
