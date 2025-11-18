@@ -38,6 +38,11 @@ impl<L, D> EClass<L, D> {
     pub fn parents(&self) -> impl ExactSizeIterator<Item = (&L, Id)> + '_ {
         self.parents.iter().map( |(n, p)| (n, *p))
     }
+
+    /// Remove all the parents of an id -- ANDY's Implementation - UNTESTED!!! -- only using carefully when Im adding a new id without any of its parents so need to clear
+    pub fn reset_parents(&mut self) {
+        self.parents = Vec::new();
+    }
 }
 
 impl<L: Language, D> EClass<L, D> {
