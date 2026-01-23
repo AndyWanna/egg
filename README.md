@@ -59,7 +59,7 @@ Forked to tweak egg as I go, each branch corresponds to diff project with diff n
 Add `egg` to your `Cargo.toml` like this:
 ```toml
 [dependencies]
-egg = "0.10.0"
+egg = "0.11.0"
 ```
 
 Make sure to compile with `--release` if you are measuring performance!
