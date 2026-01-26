@@ -239,7 +239,8 @@ where
         cost.clone()
     }
 
-    fn node_total_cost(&mut self, node: &L) -> Option<CF::Cost> {
+    /// Find the cost of a node
+    pub fn node_total_cost(&mut self, node: &L) -> Option<CF::Cost> {
         let eg = &self.egraph;
         let has_cost = |id| self.costs.contains_key(&eg.find(id));
         if node.all(has_cost) {
